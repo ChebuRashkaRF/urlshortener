@@ -23,8 +23,6 @@ func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	url := string(body)
-	fmt.Println(url)
-	fmt.Println(r.URL, r.URL.Scheme, r.URL.Host)
 
 	id := util.GenerateShortID(url)
 

@@ -1,3 +1,7 @@
 package main
 
-func main() {}
+import "github.com/ChebuRashkaRF/urlshortener/internal/server"
+
+func main() {
+	server.Run()
+}

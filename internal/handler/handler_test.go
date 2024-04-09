@@ -3,7 +3,7 @@ package handler
 import (
 	"bytes"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -75,7 +75,7 @@ func TestShortenURLHandler(t *testing.T) {
 			assert.Equal(t, tt.want.statusCode, result.StatusCode, "Код ответа не совпадает с ожидаемым")
 			assert.Equal(t, tt.want.contentType, result.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
-			url, err := ioutil.ReadAll(result.Body)
+			url, err := io.ReadAll(result.Body)
 			require.NoError(t, err)
 			err = result.Body.Close()
 			require.NoError(t, err)

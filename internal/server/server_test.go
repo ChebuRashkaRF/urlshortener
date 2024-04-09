@@ -24,10 +24,13 @@ func TestRun(t *testing.T) {
 	resp1, err := http.DefaultClient.Do(req1)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp1.StatusCode)
+	defer resp1.Body.Close()
 
 	resp2, err := http.DefaultClient.Do(req2)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
+	defer resp2.Body.Close()
+
 }
 
 func ShortenURLHandlerMock(w http.ResponseWriter, r *http.Request) {

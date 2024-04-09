@@ -129,6 +129,7 @@ func TestRedirectHandler(t *testing.T) {
 			result := w.Result()
 
 			assert.Equal(t, tt.wantStatusCode, result.StatusCode, "Код ответа не совпадает с ожидаемым")
+			defer result.Body.Close()
 
 			if tt.wantStatusCode == http.StatusTemporaryRedirect {
 				assert.Equal(t, urlMap["abc123"], result.Header.Get("Location"), "Location не совпадает с ожидаемым")

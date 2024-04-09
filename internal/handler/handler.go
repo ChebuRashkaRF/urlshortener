@@ -24,6 +24,11 @@ func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 
 	url := string(body)
 
+	if url == "" {
+		http.Error(w, "Error empty body", http.StatusBadRequest)
+		return
+	}
+
 	id := util.GenerateShortID(url)
 
 	urlMap[id] = url

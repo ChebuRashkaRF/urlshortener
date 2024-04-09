@@ -23,7 +23,7 @@ func TestShortenURLHandler(t *testing.T) {
 		method     string
 		want       want
 		wantErr    string
-		wantUrlMap map[string]string
+		wantURLMap map[string]string
 	}{
 		{
 			name:    "POST request method",
@@ -33,7 +33,7 @@ func TestShortenURLHandler(t *testing.T) {
 				contentType: "text/plain",
 				statusCode:  http.StatusCreated,
 			},
-			wantUrlMap: urlMap,
+			wantURLMap: urlMap,
 		},
 		{
 			name:    "Invalid reqBody",
@@ -81,7 +81,7 @@ func TestShortenURLHandler(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Contains(t, string(url), "http://localhost:8080/")
-			assert.NotEmpty(t, tt.wantUrlMap)
+			assert.NotEmpty(t, tt.wantURLMap)
 		})
 	}
 }

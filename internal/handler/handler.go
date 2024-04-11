@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
 	"github.com/ChebuRashkaRF/urlshortener/internal/util"
 )
 
@@ -32,7 +33,7 @@ func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, "http://localhost:8080/%s", id)
+	fmt.Fprintf(w, "%s/%s", config.Cnf.BaseURL, id)
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {

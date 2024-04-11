@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
 	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
 )
 
@@ -29,6 +30,7 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 }
 
 func TestRun(t *testing.T) {
+	config.Cnf = config.NewConfig("", "")
 	handler.URLMap = map[string]string{}
 	ts := httptest.NewServer(ShortenerRouter())
 	defer ts.Close()
@@ -48,7 +50,7 @@ func TestRun(t *testing.T) {
 	assert.Equal(t, wp.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 	assert.Equal(t, wp.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
-	assert.Contains(t, body, "http://localhost:8080/")
+	assert.Contains(t, body, config.Cnf.BaseURL)
 
 	type wantGet struct {
 		statusCode int

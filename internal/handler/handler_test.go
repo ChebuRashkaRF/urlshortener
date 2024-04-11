@@ -92,6 +92,7 @@ func TestShortenURLHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, body := testRequest(t, ts, tt.method, "/", tt.reqBody)
+			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusCreated {
 				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
@@ -146,6 +147,7 @@ func TestRedirectHandler(t *testing.T) {
 			URLMap["abc123"] = "https://example.com"
 			defer delete(URLMap, "abc123")
 			resp, body := testRequest(t, ts, tt.method, tt.request, "")
+			defer resp.Body.Close()
 
 			assert.Equal(t, tt.wantStatusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 

@@ -5,17 +5,14 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/ChebuRashkaRF/urlshortener/internal/util"
 )
 
-var urlMap = make(map[string]string)
+var URLMap = make(map[string]string)
 
 func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST requests are allowed!", http.StatusBadRequest)
-		return
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
@@ -31,7 +28,7 @@ func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 
 	id := util.GenerateShortID(url)
 
-	urlMap[id] = url
+	URLMap[id] = url
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
@@ -39,14 +36,9 @@ func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Only GET requests are allowed!", http.StatusBadRequest)
-		return
-	}
+	id := chi.URLParam(r, "id")
 
-	id := r.URL.Path[1:]
-
-	originalURL, ok := urlMap[id]
+	originalURL, ok := URLMap[id]
 	if !ok {
 		http.Error(w, "URL not found", http.StatusBadRequest)
 		return

@@ -1,15 +1,25 @@
 package server
 
 import (
+	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
+	"github.com/go-chi/chi/v5"
 	"log"
 	"net/http"
-
-	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
 )
 
+func ShortenerRouter() chi.Router {
+	r := chi.NewRouter()
+
+	r.Route("/", func(r chi.Router) {
+		r.Post("/", handler.ShortenURLHandler)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", handler.RedirectHandler)
+		})
+	})
+
+	return r
+}
+
 func Run() {
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/`, handler.ShortenURLHandler)
-	mux.HandleFunc(`/{id}`, handler.RedirectHandler)
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Fatal(http.ListenAndServe(":8080", ShortenerRouter()))
 }

@@ -1,18 +1,50 @@
 package handler
 
 import (
-	"bytes"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+func ShortenerRouter() chi.Router {
+	r := chi.NewRouter()
+
+	r.Route("/", func(r chi.Router) {
+		r.Post("/", ShortenURLHandler)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", RedirectHandler)
+		})
+	})
+
+	return r
+}
+
+func testRequest(t *testing.T, ts *httptest.Server, method,
+	path string, body string) (*http.Response, string) {
+	req, err := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
+	require.NoError(t, err)
+
+	resp, err := ts.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	return resp, string(respBody)
+}
+
 func TestShortenURLHandler(t *testing.T) {
-	urlMap = map[string]string{}
+	URLMap = map[string]string{}
+	ts := httptest.NewServer(ShortenerRouter())
+	defer ts.Close()
+
 	type want struct {
 		contentType string
 		statusCode  int
@@ -33,7 +65,7 @@ func TestShortenURLHandler(t *testing.T) {
 				contentType: "text/plain",
 				statusCode:  http.StatusCreated,
 			},
-			wantURLMap: urlMap,
+			wantURLMap: URLMap,
 		},
 		{
 			name:    "Invalid reqBody",
@@ -51,42 +83,37 @@ func TestShortenURLHandler(t *testing.T) {
 			method:  http.MethodGet,
 			want: want{
 				contentType: "text/plain",
-				statusCode:  http.StatusBadRequest,
+				statusCode:  http.StatusMethodNotAllowed,
 			},
-			wantErr: "Only POST requests are allowed!\n",
+			wantErr: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			request := httptest.NewRequest(tt.method, `/`, bytes.NewBufferString(tt.reqBody))
-			w := httptest.NewRecorder()
+			resp, body := testRequest(t, ts, tt.method, "/", tt.reqBody)
 
-			ShortenURLHandler(w, request)
-
-			result := w.Result()
-
-			if tt.wantErr != "" {
-				assert.Equal(t, tt.want.statusCode, result.StatusCode, "Код ответа не совпадает с ожидаемым")
-				assert.Equal(t, w.Body.String(), tt.wantErr, "Не совпадает ошибка с ожидаемой")
+			if resp.StatusCode != http.StatusCreated {
+				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
+				assert.Equal(t, body, tt.wantErr, "Не совпадает ошибка с ожидаемой")
+				assert.Empty(t, tt.wantURLMap)
 				return
 			}
 
-			assert.Equal(t, tt.want.statusCode, result.StatusCode, "Код ответа не совпадает с ожидаемым")
-			assert.Equal(t, tt.want.contentType, result.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
+			assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
+			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
-			url, err := io.ReadAll(result.Body)
-			require.NoError(t, err)
-			err = result.Body.Close()
-			require.NoError(t, err)
-
-			assert.Contains(t, string(url), "http://localhost:8080/")
+			assert.Contains(t, body, "http://localhost:8080/")
 			assert.NotEmpty(t, tt.wantURLMap)
+			URLMap = map[string]string{}
 		})
 	}
 }
 
 func TestRedirectHandler(t *testing.T) {
+	ts := httptest.NewServer(ShortenerRouter())
+	defer ts.Close()
+
 	tests := []struct {
 		name           string
 		method         string
@@ -98,14 +125,13 @@ func TestRedirectHandler(t *testing.T) {
 			name:           "GET request method",
 			method:         http.MethodGet,
 			request:        "/abc123",
-			wantStatusCode: http.StatusTemporaryRedirect,
+			wantStatusCode: http.StatusOK,
 		},
 		{
 			name:           "Invalid Method",
 			method:         http.MethodPost,
 			request:        "/abc123",
-			wantStatusCode: http.StatusBadRequest,
-			wantErr:        "Only GET requests are allowed!\n",
+			wantStatusCode: http.StatusMethodNotAllowed,
 		},
 		{
 			name:           "URL Not Found",
@@ -117,24 +143,14 @@ func TestRedirectHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			urlMap["abc123"] = "https://example.com"
-			if tt.wantStatusCode != http.StatusTemporaryRedirect {
-				urlMap = make(map[string]string)
-			}
-			request := httptest.NewRequest(tt.method, tt.request, nil)
-			w := httptest.NewRecorder()
+			URLMap["abc123"] = "https://example.com"
+			defer delete(URLMap, "abc123")
+			resp, body := testRequest(t, ts, tt.method, tt.request, "")
 
-			RedirectHandler(w, request)
+			assert.Equal(t, tt.wantStatusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 
-			result := w.Result()
-
-			assert.Equal(t, tt.wantStatusCode, result.StatusCode, "Код ответа не совпадает с ожидаемым")
-			defer result.Body.Close()
-
-			if tt.wantStatusCode == http.StatusTemporaryRedirect {
-				assert.Equal(t, urlMap["abc123"], result.Header.Get("Location"), "Location не совпадает с ожидаемым")
-			} else {
-				assert.Equal(t, w.Body.String(), tt.wantErr, "Не совпадает ошибка с ожидаемой")
+			if tt.wantErr != "" {
+				assert.Equal(t, body, tt.wantErr, "Не совпадает ошибка с ожидаемой")
 			}
 		})
 	}

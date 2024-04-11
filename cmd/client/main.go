@@ -42,7 +42,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// выводим код ответа
+	// выводим код ответаh
 	fmt.Println("Статус-код ", response.Status)
 	defer response.Body.Close()
 	// читаем поток из тела ответа

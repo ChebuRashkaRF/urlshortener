@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 
@@ -34,6 +35,13 @@ func main() {
 	serverAddress := flag.String("a", ":8080", "server address")
 	baseURL := flag.String("b", "http://localhost:8080", "base URL")
 	flag.Parse()
+
+	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
+		serverAddress = &envServerAddress
+	}
+	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
+		baseURL = &envBaseURL
+	}
 
 	config.Cnf = config.NewConfig(*serverAddress, *baseURL)
 

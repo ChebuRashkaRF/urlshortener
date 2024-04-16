@@ -31,9 +31,9 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 
 func TestRun(t *testing.T) {
 	config.Cnf = config.NewConfig("", "")
-	handler.URLMap = map[string]string{}
 	ts := httptest.NewServer(ShortenerRouter())
 	defer ts.Close()
+
 	type wantPost struct {
 		contentType string
 		statusCode  int
@@ -60,7 +60,7 @@ func TestRun(t *testing.T) {
 		statusCode: http.StatusOK,
 	}
 
-	for k := range handler.URLMap {
+	for k := range handler.URLStore.GetURLMap() {
 		resp, _ := testRequest(t, ts, http.MethodGet, "/"+k, "")
 		assert.Equal(t, wg.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 		defer resp.Body.Close()

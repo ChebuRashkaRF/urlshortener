@@ -1,26 +1,28 @@
-package handler
+package handler_test
 
 import (
+	"github.com/go-chi/chi/v5"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
+	"github.com/ChebuRashkaRF/urlshortener/cmd/storage"
+	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
 )
 
 func ShortenerRouter() chi.Router {
 	r := chi.NewRouter()
 
 	r.Route("/", func(r chi.Router) {
-		r.Post("/", ShortenURLHandler)
+		r.Post("/", handler.ShortenURLHandler)
 		r.Route("/{id}", func(r chi.Router) {
-			r.Get("/", RedirectHandler)
+			r.Get("/", handler.RedirectHandler)
 		})
 	})
 
@@ -43,22 +45,26 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 }
 
 func TestShortenURLHandler(t *testing.T) {
-	config.Cnf = config.NewConfig("", "")
-	URLMap = map[string]string{}
 	ts := httptest.NewServer(ShortenerRouter())
 	defer ts.Close()
+
+	config.Cnf = &config.Config{
+		BaseURL: ts.URL,
+	}
+
+	handler.URLStore = storage.NewURLStorage()
 
 	type want struct {
 		contentType string
 		statusCode  int
 	}
 	tests := []struct {
-		name       string
-		reqBody    string
-		method     string
-		want       want
-		wantErr    string
-		wantURLMap map[string]string
+		name         string
+		reqBody      string
+		method       string
+		want         want
+		wantErr      string
+		wantURLStore *storage.URLStorage
 	}{
 		{
 			name:    "POST request method",
@@ -68,7 +74,7 @@ func TestShortenURLHandler(t *testing.T) {
 				contentType: "text/plain",
 				statusCode:  http.StatusCreated,
 			},
-			wantURLMap: URLMap,
+			wantURLStore: handler.URLStore,
 		},
 		{
 			name:    "Invalid reqBody",
@@ -78,7 +84,17 @@ func TestShortenURLHandler(t *testing.T) {
 				contentType: "text/plain",
 				statusCode:  http.StatusBadRequest,
 			},
-			wantErr: "Error empty body\n",
+			wantErr: "Invalid URL\n",
+		},
+		{
+			name:    "Invalid URL",
+			reqBody: "yandex.ru",
+			method:  http.MethodPost,
+			want: want{
+				contentType: "text/plain",
+				statusCode:  http.StatusBadRequest,
+			},
+			wantErr: "Invalid URL\n",
 		},
 		{
 			name:    "Invalid Method",
@@ -100,7 +116,7 @@ func TestShortenURLHandler(t *testing.T) {
 			if resp.StatusCode != http.StatusCreated {
 				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 				assert.Equal(t, body, tt.wantErr, "Не совпадает ошибка с ожидаемой")
-				assert.Empty(t, tt.wantURLMap)
+				assert.Empty(t, handler.URLStore.GetURLMap())
 				return
 			}
 
@@ -108,16 +124,21 @@ func TestShortenURLHandler(t *testing.T) {
 			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
 			assert.Contains(t, body, config.Cnf.BaseURL)
-			assert.NotEmpty(t, tt.wantURLMap)
-			URLMap = map[string]string{}
+			assert.NotEmpty(t, tt.wantURLStore.GetURLMap())
+			handler.URLStore = &storage.URLStorage{URLMap: make(map[string]string)}
 		})
 	}
 }
 
 func TestRedirectHandler(t *testing.T) {
-	config.Cnf = config.NewConfig("", "")
 	ts := httptest.NewServer(ShortenerRouter())
 	defer ts.Close()
+
+	config.Cnf = &config.Config{
+		BaseURL: ts.URL,
+	}
+
+	handler.URLStore = storage.NewURLStorage()
 
 	tests := []struct {
 		name           string
@@ -148,8 +169,8 @@ func TestRedirectHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			URLMap["abc123"] = "https://example.com"
-			defer delete(URLMap, "abc123")
+			handler.URLStore.Set("abc123", "https://example.com")
+			defer delete(handler.URLStore.URLMap, "abc123")
 			resp, body := testRequest(t, ts, tt.method, tt.request, "")
 			defer resp.Body.Close()
 

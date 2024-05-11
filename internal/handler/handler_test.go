@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"github.com/ChebuRashkaRF/urlshortener/cmd/router"
 	"github.com/go-chi/chi/v5"
 	"io"
 	"net/http"
@@ -45,11 +46,16 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 }
 
 func TestShortenURLHandler(t *testing.T) {
-	ts := httptest.NewServer(ShortenerRouter())
+	ts := httptest.NewServer(router.NewRouter())
 	defer ts.Close()
 
+	// Извлечение порта из URL
+	parts := strings.Split(ts.URL, ":")
+	port := parts[len(parts)-1]
+
 	config.Cnf = &config.Config{
-		BaseURL: ts.URL,
+		ServerAddress: ":" + port,
+		BaseURL:       ts.URL,
 	}
 
 	handler.URLStore = storage.NewURLStorage()
@@ -131,11 +137,16 @@ func TestShortenURLHandler(t *testing.T) {
 }
 
 func TestRedirectHandler(t *testing.T) {
-	ts := httptest.NewServer(ShortenerRouter())
+	ts := httptest.NewServer(router.NewRouter())
 	defer ts.Close()
 
+	// Извлечение порта из URL
+	parts := strings.Split(ts.URL, ":")
+	port := parts[len(parts)-1]
+
 	config.Cnf = &config.Config{
-		BaseURL: ts.URL,
+		ServerAddress: ":" + port,
+		BaseURL:       ts.URL,
 	}
 
 	handler.URLStore = storage.NewURLStorage()

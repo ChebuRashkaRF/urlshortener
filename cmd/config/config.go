@@ -10,7 +10,7 @@ func NewConfig(serverAddress, baseURL string) *Config {
 		serverAddress = ":12345"
 	}
 	if baseURL == "" {
-		baseURL = "http://localhost:12345"
+		baseURL = "http://localhost" + serverAddress
 	}
 	return &Config{
 		ServerAddress: serverAddress,

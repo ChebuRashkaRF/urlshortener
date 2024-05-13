@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
-	"github.com/ChebuRashkaRF/urlshortener/cmd/storage"
+	"github.com/ChebuRashkaRF/urlshortener/internal/storage"
 	"github.com/ChebuRashkaRF/urlshortener/internal/util"
 )
 

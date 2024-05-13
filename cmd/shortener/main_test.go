@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
-	"github.com/ChebuRashkaRF/urlshortener/cmd/router"
 	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
+	"github.com/ChebuRashkaRF/urlshortener/internal/router"
 )
 
 func testRequest(t *testing.T, ts *httptest.Server, method,

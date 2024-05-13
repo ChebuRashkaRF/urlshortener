@@ -1,20 +1,20 @@
 package handler_test
 
 import (
-	"github.com/ChebuRashkaRF/urlshortener/cmd/router"
-	"github.com/go-chi/chi/v5"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
-	"github.com/ChebuRashkaRF/urlshortener/cmd/storage"
 	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
+	"github.com/ChebuRashkaRF/urlshortener/internal/router"
+	"github.com/ChebuRashkaRF/urlshortener/internal/storage"
 )
 
 func ShortenerRouter() chi.Router {

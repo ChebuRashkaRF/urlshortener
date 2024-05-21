@@ -2,7 +2,7 @@ package models
 
 // ShortenURLRequest описывает запрос пользователя.
 type ShortenURLRequest struct {
-	Url string `json:"url"`
+	URL string `json:"url"`
 }
 
 // ShortenURLResponse описывает ответ сервера.

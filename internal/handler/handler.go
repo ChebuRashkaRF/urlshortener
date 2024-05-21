@@ -60,7 +60,7 @@ func ShortenURLJSONHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inputURL := req.Url
+	inputURL := req.URL
 	parsedURL, err := url.Parse(inputURL)
 	if err != nil {
 		http.Error(w, "Invalid URL", http.StatusBadRequest)

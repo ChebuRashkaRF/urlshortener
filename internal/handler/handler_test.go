@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -31,8 +32,11 @@ func ShortenerRouter() chi.Router {
 }
 
 func testRequest(t *testing.T, ts *httptest.Server, method,
-	path string, body string) (*http.Response, string) {
+	path string, body string, json bool) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
+	if json {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	require.NoError(t, err)
 
 	resp, err := ts.Client().Do(req)
@@ -116,7 +120,7 @@ func TestShortenURLHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, body := testRequest(t, ts, tt.method, "/", tt.reqBody)
+			resp, body := testRequest(t, ts, tt.method, "/", tt.reqBody, false)
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusCreated {
@@ -131,6 +135,99 @@ func TestShortenURLHandler(t *testing.T) {
 
 			assert.Contains(t, body, config.Cnf.BaseURL)
 			assert.NotEmpty(t, tt.wantURLStore.GetURLMap())
+			handler.URLStore = &storage.URLStorage{URLMap: make(map[string]string)}
+		})
+	}
+}
+
+func TestShortenURLJSONHandler(t *testing.T) {
+	ts := httptest.NewServer(router.NewRouter())
+	defer ts.Close()
+
+	// Извлечение порта из URL
+	parts := strings.Split(ts.URL, ":")
+	port := parts[len(parts)-1]
+
+	config.Cnf = &config.Config{
+		ServerAddress: ":" + port,
+		BaseURL:       ts.URL,
+	}
+
+	handler.URLStore = storage.NewURLStorage()
+
+	type want struct {
+		contentType string
+		statusCode  int
+	}
+	tests := []struct {
+		name         string
+		reqBody      string
+		method       string
+		want         want
+		wantErr      string
+		wantURLStore *storage.URLStorage
+	}{
+		{
+			name:    "POST request method",
+			reqBody: `{"url": "https://example.com"}`,
+			method:  http.MethodPost,
+			want: want{
+				contentType: "application/json",
+				statusCode:  http.StatusCreated,
+			},
+			wantURLStore: handler.URLStore,
+		},
+		{
+			name:    "Invalid reqBody",
+			reqBody: `{"url": ""}`,
+			method:  http.MethodPost,
+			want: want{
+				contentType: "application/json",
+				statusCode:  http.StatusBadRequest,
+			},
+			wantErr: "Invalid URL\n",
+		},
+		{
+			name:    "Invalid URL",
+			reqBody: `{"url": "yandex.ru"}`,
+			method:  http.MethodPost,
+			want: want{
+				contentType: "application/json",
+				statusCode:  http.StatusBadRequest,
+			},
+			wantErr: "Invalid URL\n",
+		},
+		{
+			name:    "Invalid Method",
+			reqBody: `{"url": "https://example.com"}`,
+			method:  http.MethodGet,
+			want: want{
+				contentType: "application/json",
+				statusCode:  http.StatusMethodNotAllowed,
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, body := testRequest(t, ts, tt.method, "/api/shorten", tt.reqBody, true)
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusCreated {
+				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
+				assert.Equal(t, body, tt.wantErr, "Не совпадает ошибка с ожидаемой")
+				assert.Empty(t, handler.URLStore.GetURLMap())
+				return
+			}
+
+			assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
+			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
+
+			for id := range handler.URLStore.GetURLMap() {
+				successBody := fmt.Sprintf(`{"result": "%s/%s"}`, ts.URL, id)
+				assert.JSONEq(t, successBody, body, "ответ не совпадает с ожидаемым")
+			}
 			handler.URLStore = &storage.URLStorage{URLMap: make(map[string]string)}
 		})
 	}
@@ -182,7 +279,7 @@ func TestRedirectHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler.URLStore.Set("abc123", "https://example.com")
 			defer delete(handler.URLStore.URLMap, "abc123")
-			resp, body := testRequest(t, ts, tt.method, tt.request, "")
+			resp, body := testRequest(t, ts, tt.method, tt.request, "", false)
 			defer resp.Body.Close()
 
 			assert.Equal(t, tt.wantStatusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")

@@ -11,6 +11,7 @@ func NewRouter() chi.Router {
 
 	r.With(logger.WithLogging).Route("/", func(r chi.Router) {
 		r.Post("/", handler.ShortenURLHandler)
+		r.Post("/api/shorten", handler.ShortenURLJSONHandler)
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", handler.RedirectHandler)
 		})

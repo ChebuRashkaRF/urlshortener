@@ -3,18 +3,22 @@ package config
 type Config struct {
 	ServerAddress string
 	BaseURL       string
+	FlagLogLevel  string
 }
 
-func NewConfig(serverAddress, baseURL string) *Config {
+func NewConfig() *Config {
+	parseFlags()
+
 	if serverAddress == "" {
 		serverAddress = ":12345"
 	}
 	if baseURL == "" {
-		baseURL = "http://localhost:12345"
+		baseURL = "http://localhost" + serverAddress
 	}
 	return &Config{
 		ServerAddress: serverAddress,
 		BaseURL:       baseURL,
+		FlagLogLevel:  "info",
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
 	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
+	"github.com/ChebuRashkaRF/urlshortener/internal/router"
 )
 
 func testRequest(t *testing.T, ts *httptest.Server, method,
@@ -30,9 +31,17 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 }
 
 func TestRun(t *testing.T) {
-	config.Cnf = config.NewConfig("", "")
-	ts := httptest.NewServer(ShortenerRouter())
+	ts := httptest.NewServer(router.NewRouter())
 	defer ts.Close()
+
+	// Извлечение порта из URL
+	parts := strings.Split(ts.URL, ":")
+	port := parts[len(parts)-1]
+
+	config.Cnf = &config.Config{
+		ServerAddress: ":" + port,
+		BaseURL:       ts.URL,
+	}
 
 	type wantPost struct {
 		contentType string

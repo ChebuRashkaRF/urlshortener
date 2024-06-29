@@ -1,9 +1,10 @@
 package config
 
 type Config struct {
-	ServerAddress string
-	BaseURL       string
-	FlagLogLevel  string
+	ServerAddress   string
+	BaseURL         string
+	FileStoragePath string
+	FlagLogLevel    string
 }
 
 func NewConfig() *Config {
@@ -16,9 +17,10 @@ func NewConfig() *Config {
 		baseURL = "http://localhost" + serverAddress
 	}
 	return &Config{
-		ServerAddress: serverAddress,
-		BaseURL:       baseURL,
-		FlagLogLevel:  "info",
+		ServerAddress:   serverAddress,
+		BaseURL:         baseURL,
+		FileStoragePath: fileStoragePath,
+		FlagLogLevel:    "info",
 	}
 }
 

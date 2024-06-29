@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -59,10 +60,12 @@ func setupTestRouter(handlerFunc http.HandlerFunc, method, path string, middlewa
 	return r
 }
 
-func TestShortenURLHandler(t *testing.T) {
-	r := setupTestRouter(handler.ShortenURLHandler, http.MethodPost, "/")
+func setupTestEnvironment(t *testing.T, handlerFunc http.HandlerFunc, method, path string, middlewareList ...func(http.Handler) http.Handler) (*httptest.Server, string, *storage.URLStorage) {
+	tempFile, err := os.CreateTemp("", "urlstorage_test_*.json")
+	require.NoError(t, err)
+
+	r := setupTestRouter(handlerFunc, method, path, middlewareList...)
 	ts := httptest.NewServer(r)
-	defer ts.Close()
 
 	// Извлечение порта из URL
 	parts := strings.Split(ts.URL, ":")
@@ -73,7 +76,22 @@ func TestShortenURLHandler(t *testing.T) {
 		BaseURL:       ts.URL,
 	}
 
-	handler.URLStore = storage.NewURLStorage()
+	urlStore, err := storage.NewURLStorage(tempFile.Name())
+	require.NoError(t, err)
+
+	handler.URLStore = urlStore
+
+	t.Cleanup(func() {
+		ts.Close()
+		os.Remove(tempFile.Name())
+		handler.URLStore.Close()
+	})
+
+	return ts, ts.URL, urlStore
+}
+
+func TestShortenURLHandler(t *testing.T) {
+	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLHandler, http.MethodPost, "/")
 
 	type want struct {
 		contentType string
@@ -97,7 +115,7 @@ func TestShortenURLHandler(t *testing.T) {
 				contentType: "text/plain",
 				statusCode:  http.StatusCreated,
 			},
-			wantURLStore: handler.URLStore,
+			wantURLStore: urlStore,
 		},
 		{
 			name:    "Invalid reqBody",
@@ -142,35 +160,22 @@ func TestShortenURLHandler(t *testing.T) {
 			if resp.StatusCode != http.StatusCreated {
 				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 				assert.Equal(t, string(body), tt.wantErr, "Не совпадает ошибка с ожидаемой")
-				assert.Empty(t, handler.URLStore.GetURLMap())
+				assert.Empty(t, urlStore.GetURLMap())
 				return
 			}
 
 			assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
-			assert.Contains(t, string(body), config.Cnf.BaseURL)
+			assert.Contains(t, string(body), baseURL)
 			assert.NotEmpty(t, tt.wantURLStore.GetURLMap())
-			handler.URLStore = &storage.URLStorage{URLMap: make(map[string]string)}
+			urlStore.URLMap = make(map[string]string)
 		})
 	}
 }
 
 func TestShortenURLJSONHandler(t *testing.T) {
-	r := setupTestRouter(handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten")
-	ts := httptest.NewServer(r)
-	defer ts.Close()
-
-	// Извлечение порта из URL
-	parts := strings.Split(ts.URL, ":")
-	port := parts[len(parts)-1]
-
-	config.Cnf = &config.Config{
-		ServerAddress: ":" + port,
-		BaseURL:       ts.URL,
-	}
-
-	handler.URLStore = storage.NewURLStorage()
+	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten")
 
 	type want struct {
 		contentType string
@@ -196,7 +201,7 @@ func TestShortenURLJSONHandler(t *testing.T) {
 				contentType: "application/json",
 				statusCode:  http.StatusCreated,
 			},
-			wantURLStore: handler.URLStore,
+			wantURLStore: urlStore,
 		},
 		{
 			name:    "Invalid reqBody",
@@ -247,40 +252,28 @@ func TestShortenURLJSONHandler(t *testing.T) {
 			if resp.StatusCode != http.StatusCreated {
 				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 				assert.Equal(t, string(body), tt.wantErr, "Не совпадает ошибка с ожидаемой")
-				assert.Empty(t, handler.URLStore.GetURLMap())
+				assert.Empty(t, urlStore.GetURLMap())
 				return
 			}
 
 			assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
-			for id := range handler.URLStore.GetURLMap() {
-				successBody := fmt.Sprintf(`{"result": "%s/%s"}`, ts.URL, id)
+			for id := range urlStore.GetURLMap() {
+				successBody := fmt.Sprintf(`{"result": "%s/%s"}`, baseURL, id)
 				assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
 			}
-			handler.URLStore = &storage.URLStorage{URLMap: make(map[string]string)}
+			urlStore.URLMap = make(map[string]string)
 		})
 	}
 }
 
 func TestGzipCompressionShortenURLHandler(t *testing.T) {
-	r := setupTestRouter(handler.ShortenURLHandler, http.MethodPost, "/", middleware.GzipMiddleware)
-	ts := httptest.NewServer(r)
-	defer ts.Close()
-
-	// Извлечение порта из URL
-	parts := strings.Split(ts.URL, ":")
-	port := parts[len(parts)-1]
-
-	config.Cnf = &config.Config{
-		ServerAddress: ":" + port,
-		BaseURL:       ts.URL,
-	}
+	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLHandler, http.MethodPost, "/", middleware.GzipMiddleware)
 
 	requestBody := "https://example.com"
 
 	t.Run("sends_gzip", func(t *testing.T) {
-		handler.URLStore = storage.NewURLStorage()
 		headers := map[string]string{
 			"Content-Encoding": "gzip",
 		}
@@ -296,14 +289,14 @@ func TestGzipCompressionShortenURLHandler(t *testing.T) {
 
 		defer resp.Body.Close()
 
-		for id := range handler.URLStore.GetURLMap() {
-			successBody := fmt.Sprintf("%s/%s", ts.URL, id)
+		for id := range urlStore.GetURLMap() {
+			successBody := fmt.Sprintf("%s/%s", baseURL, id)
 			assert.Equal(t, successBody, string(body), "ответ не совпадает с ожидаемым")
 		}
+		urlStore.URLMap = make(map[string]string)
 	})
 
 	t.Run("accepts_gzip", func(t *testing.T) {
-		handler.URLStore = storage.NewURLStorage()
 		headers := map[string]string{
 			"Accept-Encoding": "gzip",
 		}
@@ -316,31 +309,20 @@ func TestGzipCompressionShortenURLHandler(t *testing.T) {
 
 		defer resp.Body.Close()
 
-		for id := range handler.URLStore.GetURLMap() {
-			successBody := fmt.Sprintf("%s/%s", ts.URL, id)
+		for id := range urlStore.GetURLMap() {
+			successBody := fmt.Sprintf("%s/%s", baseURL, id)
 			assert.Equal(t, successBody, string(body), "ответ не совпадает с ожидаемым")
 		}
+		urlStore.URLMap = make(map[string]string)
 	})
 }
 
 func TestGzipCompressionShortenURLJSONHandler(t *testing.T) {
-	r := setupTestRouter(handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten", middleware.GzipMiddleware)
-	ts := httptest.NewServer(r)
-	defer ts.Close()
-
-	// Извлечение порта из URL
-	parts := strings.Split(ts.URL, ":")
-	port := parts[len(parts)-1]
-
-	config.Cnf = &config.Config{
-		ServerAddress: ":" + port,
-		BaseURL:       ts.URL,
-	}
+	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten", middleware.GzipMiddleware)
 
 	requestBody := `{"url": "https://example.com"}`
 
 	t.Run("sends_gzip", func(t *testing.T) {
-		handler.URLStore = storage.NewURLStorage()
 		headers := map[string]string{
 			"Content-Encoding": "gzip",
 			"Content-Type":     "application/json",
@@ -358,14 +340,14 @@ func TestGzipCompressionShortenURLJSONHandler(t *testing.T) {
 
 		defer resp.Body.Close()
 
-		for id := range handler.URLStore.GetURLMap() {
-			successBody := fmt.Sprintf(`{"result":"%s/%s"}`, ts.URL, id)
+		for id := range urlStore.GetURLMap() {
+			successBody := fmt.Sprintf(`{"result":"%s/%s"}`, baseURL, id)
 			assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
 		}
+		urlStore.URLMap = make(map[string]string)
 	})
 
 	t.Run("accepts_gzip", func(t *testing.T) {
-		handler.URLStore = storage.NewURLStorage()
 		headers := map[string]string{
 			"Content-Type":    "application/json",
 			"Accept-Encoding": "gzip",
@@ -378,34 +360,17 @@ func TestGzipCompressionShortenURLJSONHandler(t *testing.T) {
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 		defer resp.Body.Close()
-		//zr, err := gzip.NewReader(resp.Body)
-		//require.NoError(t, err)
-		//
-		//b, err := io.ReadAll(zr)
-		//require.NoError(t, err)
 
-		for id := range handler.URLStore.GetURLMap() {
-			successBody := fmt.Sprintf(`{"result":"%s/%s"}`, ts.URL, id)
+		for id := range urlStore.GetURLMap() {
+			successBody := fmt.Sprintf(`{"result":"%s/%s"}`, baseURL, id)
 			assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
 		}
+		urlStore.URLMap = make(map[string]string)
 	})
 }
 
 func TestRedirectHandler(t *testing.T) {
-	r := setupTestRouter(handler.RedirectHandler, http.MethodGet, "/{id}")
-	ts := httptest.NewServer(r)
-	defer ts.Close()
-
-	// Извлечение порта из URL
-	parts := strings.Split(ts.URL, ":")
-	port := parts[len(parts)-1]
-
-	config.Cnf = &config.Config{
-		ServerAddress: ":" + port,
-		BaseURL:       ts.URL,
-	}
-
-	handler.URLStore = storage.NewURLStorage()
+	ts, _, urlStore := setupTestEnvironment(t, handler.RedirectHandler, http.MethodGet, "/{id}")
 
 	tests := []struct {
 		name           string
@@ -440,8 +405,8 @@ func TestRedirectHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler.URLStore.Set("abc123", "https://example.com")
-			defer delete(handler.URLStore.URLMap, "abc123")
+			urlStore.Set("abc123", "https://example.com")
+			defer delete(urlStore.URLMap, "abc123")
 			resp, body := testRequest(t, ts, tt.method, tt.request, strings.NewReader(""), tt.headers)
 			defer resp.Body.Close()
 

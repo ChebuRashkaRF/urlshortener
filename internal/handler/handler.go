@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ChebuRashkaRF/urlshortener/internal/storage"
 	"io"
 	"net/http"
 	"net/url"
@@ -13,15 +14,11 @@ import (
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
 	"github.com/ChebuRashkaRF/urlshortener/internal/logger"
 	"github.com/ChebuRashkaRF/urlshortener/internal/models"
-	"github.com/ChebuRashkaRF/urlshortener/internal/storage"
 	"github.com/ChebuRashkaRF/urlshortener/internal/util"
 )
 
 var URLStore *storage.URLStorage
 
-func init() {
-	URLStore = storage.NewURLStorage()
-}
 func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -41,13 +38,13 @@ func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := util.GenerateShortID(inputURL)
+	shortURL := util.GenerateShortID(inputURL)
 
-	URLStore.Set(id, inputURL)
+	URLStore.Set(shortURL, inputURL)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, "%s/%s", config.Cnf.BaseURL, id)
+	fmt.Fprintf(w, "%s/%s", config.Cnf.BaseURL, shortURL)
 }
 
 func ShortenURLJSONHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,12 +68,12 @@ func ShortenURLJSONHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := util.GenerateShortID(inputURL)
+	shortURL := util.GenerateShortID(inputURL)
 
-	URLStore.Set(id, inputURL)
+	URLStore.Set(shortURL, inputURL)
 
 	res := models.ShortenURLResponse{
-		Result: fmt.Sprintf("%s/%s", config.Cnf.BaseURL, id),
+		Result: fmt.Sprintf("%s/%s", config.Cnf.BaseURL, shortURL),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -90,9 +87,9 @@ func ShortenURLJSONHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	shortURL := chi.URLParam(r, "id")
 
-	originalURL, ok := URLStore.Get(id)
+	originalURL, ok := URLStore.Get(shortURL)
 	if !ok {
 		http.Error(w, "URL not found", http.StatusBadRequest)
 		return

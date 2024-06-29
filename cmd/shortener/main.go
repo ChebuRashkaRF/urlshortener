@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
+	"github.com/ChebuRashkaRF/urlshortener/internal/storage"
 	"net/http"
 
 	"go.uber.org/zap"
@@ -22,6 +24,20 @@ func run(cnf *config.Config) error {
 
 func main() {
 	config.Cnf = config.NewConfig()
+
+	urlStorage, err := storage.NewURLStorage(config.Cnf.FileStoragePath)
+	if err != nil {
+		logger.Log.Error("Failed to initialize URL storage", zap.Error(err))
+		panic(err)
+	}
+
+	defer func() {
+		if err := urlStorage.Close(); err != nil {
+			logger.Log.Error("Error closing URLStorage", zap.Error(err))
+		}
+	}()
+
+	handler.URLStore = urlStorage
 
 	if err := run(config.Cnf); err != nil {
 		panic(err)

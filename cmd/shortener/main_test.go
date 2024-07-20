@@ -1,9 +1,11 @@
 package main
 
 import (
+	"github.com/ChebuRashkaRF/urlshortener/internal/storage"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -12,6 +14,7 @@ import (
 
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
 	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
+	"github.com/ChebuRashkaRF/urlshortener/internal/router"
 )
 
 func testRequest(t *testing.T, ts *httptest.Server, method,
@@ -30,9 +33,30 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 }
 
 func TestRun(t *testing.T) {
-	config.Cnf = config.NewConfig("", "")
-	ts := httptest.NewServer(ShortenerRouter())
-	defer ts.Close()
+	tempFile, err := os.CreateTemp("", "urlstorage_test_*.json")
+	require.NoError(t, err)
+
+	r := router.NewRouter()
+	ts := httptest.NewServer(r)
+
+	// Извлечение порта из URL
+	parts := strings.Split(ts.URL, ":")
+	port := parts[len(parts)-1]
+
+	config.Cnf = &config.Config{
+		ServerAddress: ":" + port,
+		BaseURL:       ts.URL,
+	}
+
+	urlStore, err := storage.NewURLStorage(tempFile.Name())
+	require.NoError(t, err)
+	handler.URLStore = urlStore
+
+	t.Cleanup(func() {
+		ts.Close()
+		os.Remove(tempFile.Name())
+		handler.URLStore.Close()
+	})
 
 	type wantPost struct {
 		contentType string

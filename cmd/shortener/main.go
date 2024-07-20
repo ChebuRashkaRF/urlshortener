@@ -40,6 +40,6 @@ func main() {
 	handler.URLStore = urlStorage
 
 	if err := run(config.Cnf); err != nil {
-		panic(err)
+		logger.Log.Fatal("Failed to start server", zap.Error(err))
 	}
 }

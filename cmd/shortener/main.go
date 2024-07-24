@@ -25,6 +25,13 @@ func run(cnf *config.Config) error {
 func main() {
 	config.Cnf = config.NewConfig()
 
+	db, err := storage.NewDatabase(config.Cnf.DatabaseDSN)
+	if err != nil {
+		logger.Log.Fatal("Failed to initialize database", zap.Error(err))
+		panic(err)
+	}
+	defer db.Close()
+
 	urlStorage, err := storage.NewURLStorage(config.Cnf.FileStoragePath)
 	if err != nil {
 		logger.Log.Error("Failed to initialize URL storage", zap.Error(err))
@@ -38,6 +45,7 @@ func main() {
 	}()
 
 	handler.URLStore = urlStorage
+	handler.DB = db
 
 	if err := run(config.Cnf); err != nil {
 		logger.Log.Fatal("Failed to start server", zap.Error(err))

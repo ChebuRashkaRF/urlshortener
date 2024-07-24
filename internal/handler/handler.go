@@ -18,6 +18,7 @@ import (
 )
 
 var URLStore *storage.URLStorage
+var DB storage.Database
 
 func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
@@ -96,4 +97,12 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
+}
+
+func PingHandler(w http.ResponseWriter, r *http.Request) {
+	if err := DB.Ping(); err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

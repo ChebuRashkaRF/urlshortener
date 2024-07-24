@@ -5,6 +5,7 @@ type Config struct {
 	BaseURL         string
 	FileStoragePath string
 	FlagLogLevel    string
+	DatabaseDSN     string
 }
 
 func NewConfig() *Config {
@@ -21,6 +22,7 @@ func NewConfig() *Config {
 		BaseURL:         baseURL,
 		FileStoragePath: fileStoragePath,
 		FlagLogLevel:    "info",
+		DatabaseDSN:     databaseDSN,
 	}
 }
 

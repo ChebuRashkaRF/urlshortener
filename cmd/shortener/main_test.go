@@ -48,7 +48,7 @@ func TestRun(t *testing.T) {
 		BaseURL:       ts.URL,
 	}
 
-	urlStore, err := storage.NewURLStorage(tempFile.Name())
+	urlStore, err := storage.NewFileStorage(tempFile.Name())
 	require.NoError(t, err)
 	handler.URLStore = urlStore
 
@@ -84,7 +84,7 @@ func TestRun(t *testing.T) {
 		statusCode: http.StatusOK,
 	}
 
-	for k := range handler.URLStore.GetURLMap() {
+	for k := range urlStore.GetURLMap() {
 		resp, _ := testRequest(t, ts, http.MethodGet, "/"+k, "")
 		assert.Equal(t, wg.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 		defer resp.Body.Close()

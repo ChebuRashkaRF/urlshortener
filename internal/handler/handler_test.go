@@ -5,10 +5,12 @@ import (
 	"compress/gzip"
 	"fmt"
 	"github.com/ChebuRashkaRF/urlshortener/internal/middleware"
+	"github.com/ChebuRashkaRF/urlshortener/internal/storage/mock"
+	"github.com/ChebuRashkaRF/urlshortener/internal/util"
+	"github.com/golang/mock/gomock"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -18,7 +20,6 @@ import (
 
 	"github.com/ChebuRashkaRF/urlshortener/cmd/config"
 	"github.com/ChebuRashkaRF/urlshortener/internal/handler"
-	"github.com/ChebuRashkaRF/urlshortener/internal/storage"
 )
 
 func testRequest(t *testing.T, ts *httptest.Server, method,
@@ -60,9 +61,11 @@ func setupTestRouter(handlerFunc http.HandlerFunc, method, path string, middlewa
 	return r
 }
 
-func setupTestEnvironment(t *testing.T, handlerFunc http.HandlerFunc, method, path string, middlewareList ...func(http.Handler) http.Handler) (*httptest.Server, string, *storage.URLStorage) {
-	tempFile, err := os.CreateTemp("", "urlstorage_test_*.json")
-	require.NoError(t, err)
+func setupTestEnvironment(t *testing.T, handlerFunc http.HandlerFunc, method, path string, middlewareList ...func(http.Handler) http.Handler) (*httptest.Server, string, *mock.MockStorage) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := mock.NewMockStorage(ctrl)
 
 	r := setupTestRouter(handlerFunc, method, path, middlewareList...)
 	ts := httptest.NewServer(r)
@@ -76,35 +79,29 @@ func setupTestEnvironment(t *testing.T, handlerFunc http.HandlerFunc, method, pa
 		BaseURL:       ts.URL,
 	}
 
-	urlStore, err := storage.NewURLStorage(tempFile.Name())
-	require.NoError(t, err)
-
-	handler.URLStore = urlStore
+	handler.URLStore = mockStore
 
 	t.Cleanup(func() {
 		ts.Close()
-		os.Remove(tempFile.Name())
-		handler.URLStore.Close()
 	})
 
-	return ts, ts.URL, urlStore
+	return ts, ts.URL, mockStore
 }
 
 func TestShortenURLHandler(t *testing.T) {
-	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLHandler, http.MethodPost, "/")
+	ts, baseURL, mockStore := setupTestEnvironment(t, handler.ShortenURLHandler, http.MethodPost, "/")
 
 	type want struct {
 		contentType string
 		statusCode  int
 	}
 	tests := []struct {
-		name         string
-		reqBody      string
-		method       string
-		headers      map[string]string
-		want         want
-		wantErr      string
-		wantURLStore *storage.URLStorage
+		name    string
+		reqBody string
+		method  string
+		headers map[string]string
+		want    want
+		wantErr string
 	}{
 		{
 			name:    "POST request method",
@@ -115,7 +112,6 @@ func TestShortenURLHandler(t *testing.T) {
 				contentType: "text/plain",
 				statusCode:  http.StatusCreated,
 			},
-			wantURLStore: urlStore,
 		},
 		{
 			name:    "Invalid reqBody",
@@ -154,13 +150,16 @@ func TestShortenURLHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.want.statusCode == http.StatusCreated {
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+			}
+
 			resp, body := testRequest(t, ts, tt.method, "/", strings.NewReader(tt.reqBody), tt.headers)
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusCreated {
 				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 				assert.Equal(t, string(body), tt.wantErr, "Не совпадает ошибка с ожидаемой")
-				assert.Empty(t, urlStore.GetURLMap())
 				return
 			}
 
@@ -168,32 +167,29 @@ func TestShortenURLHandler(t *testing.T) {
 			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
 			assert.Contains(t, string(body), baseURL)
-			assert.NotEmpty(t, tt.wantURLStore.GetURLMap())
-			urlStore.URLMap = make(map[string]string)
 		})
 	}
 }
 
 func TestShortenURLJSONHandler(t *testing.T) {
-	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten")
+	ts, baseURL, mockStore := setupTestEnvironment(t, handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten")
 
 	type want struct {
 		contentType string
 		statusCode  int
 	}
 	tests := []struct {
-		name         string
-		reqBody      string
-		method       string
-		headers      map[string]string
-		want         want
-		wantErr      string
-		wantURLStore *storage.URLStorage
+		name    string
+		reqURL  string
+		method  string
+		headers map[string]string
+		want    want
+		wantErr string
 	}{
 		{
-			name:    "POST request method",
-			reqBody: `{"url": "https://example.com"}`,
-			method:  http.MethodPost,
+			name:   "POST request method",
+			reqURL: "https://example.com",
+			method: http.MethodPost,
 			headers: map[string]string{
 				"Content-Type": "application/json",
 			},
@@ -201,12 +197,11 @@ func TestShortenURLJSONHandler(t *testing.T) {
 				contentType: "application/json",
 				statusCode:  http.StatusCreated,
 			},
-			wantURLStore: urlStore,
 		},
 		{
-			name:    "Invalid reqBody",
-			reqBody: `{"url": ""}`,
-			method:  http.MethodPost,
+			name:   "Invalid reqBody",
+			reqURL: "",
+			method: http.MethodPost,
 			headers: map[string]string{
 				"Content-Type": "application/json",
 			},
@@ -217,9 +212,9 @@ func TestShortenURLJSONHandler(t *testing.T) {
 			wantErr: "Invalid URL\n",
 		},
 		{
-			name:    "Invalid URL",
-			reqBody: `{"url": "yandex.ru"}`,
-			method:  http.MethodPost,
+			name:   "Invalid URL",
+			reqURL: "yandex.ru",
+			method: http.MethodPost,
 			headers: map[string]string{
 				"Content-Type": "application/json",
 			},
@@ -230,9 +225,9 @@ func TestShortenURLJSONHandler(t *testing.T) {
 			wantErr: "Invalid URL\n",
 		},
 		{
-			name:    "Invalid Method",
-			reqBody: `{"url": "https://example.com"}`,
-			method:  http.MethodGet,
+			name:   "Invalid Method",
+			reqURL: "https://example.com",
+			method: http.MethodGet,
 			headers: map[string]string{
 				"Content-Type": "application/json",
 			},
@@ -246,30 +241,33 @@ func TestShortenURLJSONHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, body := testRequest(t, ts, tt.method, "/api/shorten", strings.NewReader(tt.reqBody), tt.headers)
+			if tt.want.statusCode == http.StatusCreated {
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+			}
+
+			reqBody := fmt.Sprintf(`{"url": "%s"}`, tt.reqURL)
+			resp, body := testRequest(t, ts, tt.method, "/api/shorten", strings.NewReader(reqBody), tt.headers)
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusCreated {
 				assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 				assert.Equal(t, string(body), tt.wantErr, "Не совпадает ошибка с ожидаемой")
-				assert.Empty(t, urlStore.GetURLMap())
 				return
 			}
 
 			assert.Equal(t, tt.want.statusCode, resp.StatusCode, "Код ответа не совпадает с ожидаемым")
 			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"), "Content-Type не совпадает с ожидаемым")
 
-			for id := range urlStore.GetURLMap() {
-				successBody := fmt.Sprintf(`{"result": "%s/%s"}`, baseURL, id)
-				assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
-			}
-			urlStore.URLMap = make(map[string]string)
+			id := util.GenerateShortID(tt.reqURL)
+			successBody := fmt.Sprintf(`{"result": "%s/%s"}`, baseURL, id)
+			assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
+
 		})
 	}
 }
 
 func TestGzipCompressionShortenURLHandler(t *testing.T) {
-	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLHandler, http.MethodPost, "/", middleware.GzipMiddleware)
+	ts, baseURL, mockStore := setupTestEnvironment(t, handler.ShortenURLHandler, http.MethodPost, "/", middleware.GzipMiddleware)
 
 	requestBody := "https://example.com"
 
@@ -284,16 +282,14 @@ func TestGzipCompressionShortenURLHandler(t *testing.T) {
 		err = zb.Close()
 		require.NoError(t, err)
 
+		mockStore.EXPECT().Set(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
 		resp, body := testRequest(t, ts, http.MethodPost, "/", buf, headers)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 		defer resp.Body.Close()
 
-		for id := range urlStore.GetURLMap() {
-			successBody := fmt.Sprintf("%s/%s", baseURL, id)
-			assert.Equal(t, successBody, string(body), "ответ не совпадает с ожидаемым")
-		}
-		urlStore.URLMap = make(map[string]string)
+		assert.Contains(t, string(body), baseURL, "ответ не совпадает с ожидаемым")
 	})
 
 	t.Run("accepts_gzip", func(t *testing.T) {
@@ -303,23 +299,20 @@ func TestGzipCompressionShortenURLHandler(t *testing.T) {
 
 		buf := bytes.NewBufferString(requestBody)
 
+		mockStore.EXPECT().Set(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
 		resp, body := testRequest(t, ts, http.MethodPost, "/", buf, headers)
-
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-
 		defer resp.Body.Close()
 
-		for id := range urlStore.GetURLMap() {
-			successBody := fmt.Sprintf("%s/%s", baseURL, id)
-			assert.Equal(t, successBody, string(body), "ответ не совпадает с ожидаемым")
-		}
-		urlStore.URLMap = make(map[string]string)
+		assert.Contains(t, string(body), baseURL, "ответ не совпадает с ожидаемым")
 	})
 }
 
 func TestGzipCompressionShortenURLJSONHandler(t *testing.T) {
-	ts, baseURL, urlStore := setupTestEnvironment(t, handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten", middleware.GzipMiddleware)
+	ts, baseURL, mockStore := setupTestEnvironment(t, handler.ShortenURLJSONHandler, http.MethodPost, "/api/shorten", middleware.GzipMiddleware)
 
+	requestURL := "https://example.com"
 	requestBody := `{"url": "https://example.com"}`
 
 	t.Run("sends_gzip", func(t *testing.T) {
@@ -335,16 +328,15 @@ func TestGzipCompressionShortenURLJSONHandler(t *testing.T) {
 		err = zb.Close()
 		require.NoError(t, err)
 
+		mockStore.EXPECT().Set(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
 		resp, body := testRequest(t, ts, http.MethodPost, "/api/shorten", buf, headers)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-
 		defer resp.Body.Close()
 
-		for id := range urlStore.GetURLMap() {
-			successBody := fmt.Sprintf(`{"result":"%s/%s"}`, baseURL, id)
-			assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
-		}
-		urlStore.URLMap = make(map[string]string)
+		id := util.GenerateShortID(requestURL)
+		successBody := fmt.Sprintf(`{"result": "%s/%s"}`, baseURL, id)
+		assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
 	})
 
 	t.Run("accepts_gzip", func(t *testing.T) {
@@ -355,22 +347,20 @@ func TestGzipCompressionShortenURLJSONHandler(t *testing.T) {
 
 		buf := bytes.NewBufferString(requestBody)
 
+		mockStore.EXPECT().Set(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
 		resp, body := testRequest(t, ts, http.MethodPost, "/api/shorten", buf, headers)
-
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-
 		defer resp.Body.Close()
 
-		for id := range urlStore.GetURLMap() {
-			successBody := fmt.Sprintf(`{"result":"%s/%s"}`, baseURL, id)
-			assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
-		}
-		urlStore.URLMap = make(map[string]string)
+		id := util.GenerateShortID(requestURL)
+		successBody := fmt.Sprintf(`{"result": "%s/%s"}`, baseURL, id)
+		assert.JSONEq(t, successBody, string(body), "ответ не совпадает с ожидаемым")
 	})
 }
 
 func TestRedirectHandler(t *testing.T) {
-	ts, _, urlStore := setupTestEnvironment(t, handler.RedirectHandler, http.MethodGet, "/{id}")
+	ts, _, mockStore := setupTestEnvironment(t, handler.RedirectHandler, http.MethodGet, "/{id}")
 
 	tests := []struct {
 		name           string
@@ -379,6 +369,7 @@ func TestRedirectHandler(t *testing.T) {
 		request        string
 		wantStatusCode int
 		wantErr        string
+		setupMock      func()
 	}{
 		{
 			name:           "GET request method",
@@ -386,6 +377,9 @@ func TestRedirectHandler(t *testing.T) {
 			headers:        nil,
 			request:        "/abc123",
 			wantStatusCode: http.StatusOK,
+			setupMock: func() {
+				mockStore.EXPECT().Get("abc123").Return("https://example.com", true).Times(1)
+			},
 		},
 		{
 			name:           "Invalid Method",
@@ -393,6 +387,7 @@ func TestRedirectHandler(t *testing.T) {
 			headers:        nil,
 			request:        "/abc123",
 			wantStatusCode: http.StatusMethodNotAllowed,
+			setupMock:      func() {},
 		},
 		{
 			name:           "URL Not Found",
@@ -401,12 +396,14 @@ func TestRedirectHandler(t *testing.T) {
 			request:        "/invalidid",
 			wantStatusCode: http.StatusBadRequest,
 			wantErr:        "URL not found\n",
+			setupMock: func() {
+				mockStore.EXPECT().Get("invalidid").Return("", false).Times(1)
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			urlStore.Set("abc123", "https://example.com")
-			defer delete(urlStore.URLMap, "abc123")
+			tt.setupMock()
 			resp, body := testRequest(t, ts, tt.method, tt.request, strings.NewReader(""), tt.headers)
 			defer resp.Body.Close()
 

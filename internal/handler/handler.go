@@ -17,8 +17,7 @@ import (
 	"github.com/ChebuRashkaRF/urlshortener/internal/util"
 )
 
-var URLStore *storage.URLStorage
-var DB storage.Database
+var URLStore storage.Storage
 
 func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
@@ -41,7 +40,12 @@ func ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 
 	shortURL := util.GenerateShortID(inputURL)
 
-	URLStore.Set(shortURL, inputURL)
+	err = URLStore.Set(shortURL, inputURL)
+	if err != nil {
+		logger.Log.Error("Failed to store URL", zap.Error(err))
+		http.Error(w, "Failed to store URL", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
@@ -71,7 +75,12 @@ func ShortenURLJSONHandler(w http.ResponseWriter, r *http.Request) {
 
 	shortURL := util.GenerateShortID(inputURL)
 
-	URLStore.Set(shortURL, inputURL)
+	err = URLStore.Set(shortURL, inputURL)
+	if err != nil {
+		logger.Log.Error("Failed to store URL", zap.Error(err))
+		http.Error(w, "Failed to store URL", http.StatusInternalServerError)
+		return
+	}
 
 	res := models.ShortenURLResponse{
 		Result: fmt.Sprintf("%s/%s", config.Cnf.BaseURL, shortURL),
@@ -100,8 +109,13 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func PingHandler(w http.ResponseWriter, r *http.Request) {
-	if err := DB.Ping(); err != nil {
-		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+	if db, ok := URLStore.(*storage.DatabaseStorage); ok {
+		if err := db.Ping(); err != nil {
+			http.Error(w, "Database connection failed", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, "Unsupported storage type", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)

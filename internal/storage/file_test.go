@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestURLStorage(t *testing.T) {
+func TestFileStorage(t *testing.T) {
 	tempFile, err := os.CreateTemp("", "urlstorage_test_*.json")
 	require.NoError(t, err)
 	defer os.Remove(tempFile.Name())
 
-	urlStorage, err := NewURLStorage(tempFile.Name())
+	urlStorage, err := NewFileStorage(tempFile.Name())
 	require.NoError(t, err)
 	defer urlStorage.Close()
 
@@ -25,7 +25,7 @@ func TestURLStorage(t *testing.T) {
 	require.True(t, ok, "Expected true")
 	assert.Equal(t, "https://example.com", url, "Expected https://example.com")
 
-	reloadedStorage, err := NewURLStorage(tempFile.Name())
+	reloadedStorage, err := NewFileStorage(tempFile.Name())
 	require.NoError(t, err)
 	defer reloadedStorage.Close()
 
@@ -34,12 +34,12 @@ func TestURLStorage(t *testing.T) {
 	assert.Equal(t, "https://example.com", url, "Expected https://example.com")
 }
 
-func TestGetURLMap(t *testing.T) {
+func TestFileStorageGetURLMap(t *testing.T) {
 	tempFile, err := os.CreateTemp("", "urlstorage_test_*.json")
 	require.NoError(t, err)
 	defer os.Remove(tempFile.Name())
 
-	urlStorage, err := NewURLStorage(tempFile.Name())
+	urlStorage, err := NewFileStorage(tempFile.Name())
 	require.NoError(t, err)
 	defer urlStorage.Close()
 
@@ -56,7 +56,7 @@ func TestGetURLMap(t *testing.T) {
 	assert.Equal(t, "https://example3.com", allURLs["test3"])
 
 	// Reload storage from file and verify data
-	reloadedStorage, err := NewURLStorage(tempFile.Name())
+	reloadedStorage, err := NewFileStorage(tempFile.Name())
 	require.NoError(t, err)
 	defer reloadedStorage.Close()
 
@@ -68,12 +68,12 @@ func TestGetURLMap(t *testing.T) {
 	assert.Equal(t, "https://example3.com", allURLs["test3"])
 }
 
-func TestURLStorageUUID(t *testing.T) {
+func TestFileStorageUUID(t *testing.T) {
 	tempFile, err := os.CreateTemp("", "urlstorage_test_*.json")
 	require.NoError(t, err)
 	defer os.Remove(tempFile.Name())
 
-	urlStorage, err := NewURLStorage(tempFile.Name())
+	urlStorage, err := NewFileStorage(tempFile.Name())
 	require.NoError(t, err)
 	defer urlStorage.Close()
 
@@ -86,7 +86,7 @@ func TestURLStorageUUID(t *testing.T) {
 	assert.Equal(t, 3, urlStorage.UUID, "Expected UUID to be incremented to 3")
 
 	// Reload storage from file and verify UUID
-	reloadedStorage, err := NewURLStorage(tempFile.Name())
+	reloadedStorage, err := NewFileStorage(tempFile.Name())
 	require.NoError(t, err)
 	defer reloadedStorage.Close()
 

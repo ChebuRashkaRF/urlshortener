@@ -15,8 +15,8 @@ var (
 func parseFlags() {
 	flag.StringVar(&serverAddress, "a", ":8080", "server address")
 	flag.StringVar(&baseURL, "b", "http://localhost:8080", "base URL")
-	flag.StringVar(&fileStoragePath, "f", "/tmp/short-url-db.json", "file storage path")
-	flag.StringVar(&databaseDSN, "d", "postgres://praktikum:praktikum@localhost:5432/praktikum?sslmode=disable", "database DSN")
+	flag.StringVar(&fileStoragePath, "f", "", "file storage path")
+	flag.StringVar(&databaseDSN, "d", "", "database DSN")
 	flag.Parse()
 
 	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
